@@ -1,51 +1,106 @@
 import base64
 import httpx
 import os
+import cloudinary
+import cloudinary.uploader
 from dotenv import load_dotenv
 from prompt import AD_ANALYSIS_PROMPT
 
 load_dotenv()
 
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY")
+NIM_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
+MODEL = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
+
+cloudinary.config(
+    cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
+    api_key=os.getenv("CLOUDINARY_API_KEY"),
+    api_secret=os.getenv("CLOUDINARY_API_SECRET")
+)
+
+
+async def upload_to_cloudinary(video_bytes: bytes, filename: str) -> str:
+    print("Uploading video to Cloudinary...")
+    result = cloudinary.uploader.upload(
+        video_bytes,
+        resource_type="video",
+        public_id=f"ad_analyser/{filename}",
+        overwrite=True
+    )
+    url = result["secure_url"]
+    print(f"Cloudinary URL: {url}")
+    return url
+
+
+async def delete_from_cloudinary(filename: str):
+    try:
+        cloudinary.uploader.destroy(
+            f"ad_analyser/{filename}",
+            resource_type="video"
+        )
+        print("Deleted video from Cloudinary")
+    except Exception as e:
+        print(f"Cloudinary delete failed (non-critical): {e}")
+
 
 async def analyze_ad(video_bytes: bytes, filename: str) -> str:
-    video_b64 = base64.b64encode(video_bytes).decode()
+    # Step 1 — upload to Cloudinary to get public URL
+    video_url = await upload_to_cloudinary(video_bytes, filename)
 
-    payload = {
-        "model": "google/gemini-2.0-flash-001",
-        "messages": [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:video/mp4;base64,{video_b64}"
+    try:
+        # Step 2 — send public URL to NVIDIA NIM
+        payload = {
+            "model": MODEL,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": AD_ANALYSIS_PROMPT
+                        },
+                        {
+                            "type": "video_url",
+                            "video_url": {
+                                "url": video_url
+                            }
                         }
-                    },
-                    {
-                        "type": "text",
-                        "text": AD_ANALYSIS_PROMPT
-                    }
-                ]
-            }
-        ],
-        "max_tokens": 2000
-    }
+                    ]
+                }
+            ],
+            "max_tokens": 4096,
+            "temperature": 0.3,
+            "chat_template_kwargs": {"enable_thinking": False},
+            "mm_processor_kwargs": {"use_audio_in_video": True},
+            "media_io_kwargs": {"video": {"fps": 1.0, "num_frames": -1}},
+            "stream": False
+        }
 
-    headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "Content-Type": "application/json",
-        "HTTP-Referer": "http://localhost:3000",
-        "X-Title": "Ad Analyser"
-    }
+        headers = {
+            "Authorization": f"Bearer {NVIDIA_API_KEY}",
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+        }
 
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        response = await client.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            json=payload,
-            headers=headers
-        )
-        response.raise_for_status()
-        data = response.json()
-        return data["choices"][0]["message"]["content"]
+        print(f"Sending video URL to NVIDIA NIM...")
+
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            response = await client.post(NIM_URL, json=payload, headers=headers)
+
+            print("Status:", response.status_code)
+            if response.status_code != 200:
+                print("Error:", response.text)
+                response.raise_for_status()
+
+            data = response.json()
+            message = data["choices"][0]["message"]
+            content = message.get("content", "")
+
+            if not content:
+                raise ValueError("Model returned empty content.")
+
+            return content
+
+    finally:
+        # Step 3 — always delete from Cloudinary after analysis
+        await delete_from_cloudinary(filename)

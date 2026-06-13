@@ -13,15 +13,14 @@ app.add_middleware(
 
 @app.post("/analyze")
 async def analyze(video: UploadFile = File(...)):
-    if not video.filename.endswith(".mp4"):
+    if not video.filename.lower().endswith(".mp4"):
         raise HTTPException(status_code=400, detail="Only MP4 files supported")
-    
+
     video_bytes = await video.read()
-    
-    # Warn if file is large (base64 inflates ~33%)
-    if len(video_bytes) > 8_000_000:
-        raise HTTPException(status_code=400, detail="File too large. Keep under 8MB.")
-    
+
+    if len(video_bytes) > 50_000_000:  # 50MB limit
+        raise HTTPException(status_code=400, detail="File too large. Keep under 50MB.")
+
     result = await analyze_ad(video_bytes, video.filename)
     return {"analysis": result}
 

@@ -1,19 +1,28 @@
 AD_ANALYSIS_PROMPT = """
-You are an expert advertising analyst. Analyze this Meta ad video and provide a structured breakdown:
+You are an expert advertising analyst. Analyze this Meta ad video and provide a structured breakdown.
 
-1. HOOK (0-3 seconds): What is the opening hook? Is it visual, text, audio or action-based? How strong is it?
+Use EXACTLY this format with these exact headers:
 
-2. AD STRUCTURE: Describe the full flow of the ad — what happens scene by scene.
+1. HOOK:
+[Your analysis here]
 
-3. MESSAGING: What is the core message? What problem or desire does it address?
+2. AD STRUCTURE:
+[Your analysis here]
 
-4. CTA (Call to Action): What is the CTA? When does it appear? How is it delivered?
+3. MESSAGING:
+[Your analysis here]
 
-5. PRODUCT/SERVICE: What is being sold? How is it presented?
+4. CTA:
+[Your analysis here]
 
-6. TONE & STYLE: What is the visual style, pacing, and emotional tone?
+5. PRODUCT/SERVICE:
+[Your analysis here]
 
-7. AUDIENCE SIGNALS: Who does this ad appear to be targeting?
+6. TONE & STYLE:
+[Your analysis here]
 
-Be specific and descriptive. Focus on what is ACTUALLY happening, not recommendations.
+7. AUDIENCE SIGNALS:
+[Your analysis here]
+
+Be specific and descriptive. Focus on what is ACTUALLY happening, not recommendations. No markdown bold or asterisks.
 """
