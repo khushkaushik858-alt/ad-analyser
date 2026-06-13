@@ -6,7 +6,11 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=[
+        "http://localhost:3000",
+        "https://frontend-six-tau-76.vercel.app",
+        "https://frontend-e7gw0u5sl-khushkaushik858-7069s-projects.vercel.app",
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -18,8 +22,8 @@ async def analyze(video: UploadFile = File(...)):
 
     video_bytes = await video.read()
 
-    if len(video_bytes) > 50_000_000:  # 50MB limit
-        raise HTTPException(status_code=400, detail="File too large. Keep under 50MB.")
+    if len(video_bytes) > 100_000_000:
+        raise HTTPException(status_code=400, detail="File too large. Keep under 100MB.")
 
     result = await analyze_ad(video_bytes, video.filename)
     return {"analysis": result}
