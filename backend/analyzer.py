@@ -1,4 +1,4 @@
-import base64
+import re
 import httpx
 import os
 import cloudinary
@@ -17,6 +17,20 @@ cloudinary.config(
     api_key=os.getenv("CLOUDINARY_API_KEY"),
     api_secret=os.getenv("CLOUDINARY_API_SECRET")
 )
+
+
+def clean_model_output(text: str) -> str:
+    # Remove internal model tokens like <start_of_description>, <0.0 - 0.0> etc
+    text = re.sub(r'<[^>]+>', '', text)
+    # Remove frame description lines like **Frame 1 (00:00):**
+    text = re.sub(r'\*\*Frame \d+[^*]*\*\*:?', '', text)
+    # Remove unbolded frame lines like "Frame 2: The woman..."
+    text = re.sub(r'Frame \d+[^\n]*\n', '', text)
+    # Remove timestamp lines like <0.0 - 0.0> or <00:01>
+    text = re.sub(r'\d+:\d+\s*[-–]\s*\d+:\d+', '', text)
+    # Collapse excessive blank lines
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
 
 
 async def upload_to_cloudinary(video_bytes: bytes, filename: str) -> str:
@@ -44,11 +58,9 @@ async def delete_from_cloudinary(filename: str):
 
 
 async def analyze_ad(video_bytes: bytes, filename: str) -> str:
-    # Step 1 — upload to Cloudinary to get public URL
     video_url = await upload_to_cloudinary(video_bytes, filename)
 
     try:
-        # Step 2 — send public URL to NVIDIA NIM
         payload = {
             "model": MODEL,
             "messages": [
@@ -82,7 +94,7 @@ async def analyze_ad(video_bytes: bytes, filename: str) -> str:
             "Accept": "application/json"
         }
 
-        print(f"Sending video URL to NVIDIA NIM...")
+        print("Sending video URL to NVIDIA NIM...")
 
         async with httpx.AsyncClient(timeout=300.0) as client:
             response = await client.post(NIM_URL, json=payload, headers=headers)
@@ -99,8 +111,10 @@ async def analyze_ad(video_bytes: bytes, filename: str) -> str:
             if not content:
                 raise ValueError("Model returned empty content.")
 
+            # Clean internal tokens before returning
+            content = clean_model_output(content)
+
             return content
 
     finally:
-        # Step 3 — always delete from Cloudinary after analysis
         await delete_from_cloudinary(filename)
